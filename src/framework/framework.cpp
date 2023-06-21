@@ -1,36 +1,34 @@
 #include "framework.hpp"
-
+#include "gui/gui.hpp"
 
 
 void apollo::launch( ) { 
-    start( );
+    initialize( );
 }
 
-void apollo::start( ) {
-    WNDCLASSEXW wc = { sizeof( wc ), CS_CLASSDC, wnd_proc, 0L, 0L, GetModuleHandle( nullptr ), nullptr, nullptr, nullptr, nullptr, L"ImGui Example", nullptr };
+void apollo::initialize( ) {
+    WNDCLASSEXW wc = { sizeof( wc ), CS_CLASSDC, wnd_proc, 0L, 0L, GetModuleHandle( nullptr ), nullptr, nullptr, nullptr, nullptr, L"Apollo", nullptr };
     ::RegisterClassExW( &wc );
-    HWND hwnd = ::CreateWindowW( wc.lpszClassName, L"Dear ImGui DirectX9 Example", WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, nullptr, nullptr, wc.hInstance, nullptr );
+    auto window_style = ( WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX );
+    HWND hwnd = ::CreateWindowW( wc.lpszClassName, L"Apollo - A Print Farm Solution", window_style, 100, 100, 1280, 800, nullptr, nullptr, wc.hInstance, nullptr );
 
     // Initialize Direct3D
-    if ( !apollo::directx::create_device( hwnd ) ) {
-        apollo::directx::cleanup_device( );
+    if ( !directx::create_device( hwnd ) ) {
+        directx::cleanup_device( );
         ::UnregisterClassW( wc.lpszClassName, wc.hInstance );
         return;
     }
-    ::ShowWindow( ::GetConsoleWindow( ), SW_HIDE );
     ::ShowWindow( hwnd, SW_SHOWDEFAULT );
     ::UpdateWindow( hwnd );
 
     IMGUI_CHECKVERSION( );
     ImGui::CreateContext( );
     ImGuiIO& io = ImGui::GetIO( ); ( void )io;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
     ImGui::StyleColorsDark( );
 
     ImGui_ImplWin32_Init( hwnd );
-    ImGui_ImplDX9_Init( apollo::directx::d3d_device );
+    ImGui_ImplDX11_Init( directx::d3d_device, directx::d3d_device_ctx );
     bool show_demo_window = true;
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4( 0.45f, 0.55f, 0.60f, 1.00f );
@@ -48,86 +46,86 @@ void apollo::start( ) {
         if ( done )
             break;
 
-        if ( apollo::directx::resize_width != 0 && apollo::directx::resize_height != 0 ) {
-            apollo::directx::d3dpp.BackBufferWidth = apollo::directx::resize_width;
-            apollo::directx::d3dpp.BackBufferHeight = apollo::directx::resize_height;
-            apollo::directx::resize_width = apollo::directx::resize_height = 0;
-            apollo::directx::reset_device( );
+        if ( directx::resize_width != 0 && directx::resize_height != 0 ) {
+            directx::cleanup_render_target( );
+            directx::swap_chain->ResizeBuffers( 0, directx::resize_width, directx::resize_height, DXGI_FORMAT_UNKNOWN, 0 );
+            directx::resize_width = directx::resize_width = 0;
+            directx::create_render_target( );
         }
 
-        ImGui_ImplDX9_NewFrame( );
+        ImGui_ImplDX11_NewFrame( );
         ImGui_ImplWin32_NewFrame( );
         ImGui::NewFrame( );
 
-        ImGui::Begin( "Test" );
-        {
-            ImGui::Text( "This is test text" );
-            ImGui::End( );
-        }
+        gui::render( );
 
-        ImGui::EndFrame( );
-        apollo::directx::d3d_device->SetRenderState( D3DRS_ZENABLE, FALSE );
-        apollo::directx::d3d_device->SetRenderState( D3DRS_ALPHABLENDENABLE, FALSE );
-        apollo::directx::d3d_device->SetRenderState( D3DRS_SCISSORTESTENABLE, FALSE );
-        D3DCOLOR clear_col_dx = D3DCOLOR_RGBA( ( int )( clear_color.x * clear_color.w * 255.0f ), ( int )( clear_color.y * clear_color.w * 255.0f ), ( int )( clear_color.z * clear_color.w * 255.0f ), ( int )( clear_color.w * 255.0f ) );
-        apollo::directx::d3d_device->Clear( 0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, clear_col_dx, 1.0f, 0 );
-        if ( apollo::directx::d3d_device->BeginScene( ) >= 0 ) {
-            ImGui::Render( );
-            ImGui_ImplDX9_RenderDrawData( ImGui::GetDrawData( ) );
-            apollo::directx::d3d_device->EndScene( );
-        }
-        HRESULT result = apollo::directx::d3d_device->Present( nullptr, nullptr, nullptr, nullptr );
+        ImGui::Render( );
+        const float clear_color_with_alpha[ 4 ] = { clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w };
+        directx::d3d_device_ctx->OMSetRenderTargets( 1, &directx::render_target_view, nullptr );
+        directx::d3d_device_ctx->ClearRenderTargetView( directx::render_target_view, clear_color_with_alpha );
+        ImGui_ImplDX11_RenderDrawData( ImGui::GetDrawData( ) );
 
-        if ( result == D3DERR_DEVICELOST && apollo::directx::d3d_device->TestCooperativeLevel( ) == D3DERR_DEVICENOTRESET )
-            apollo::directx::reset_device( );
+        directx::swap_chain->Present( 1, 0 );
     }
 
-    ImGui_ImplDX9_Shutdown( );
+    ImGui_ImplDX11_Shutdown( );
     ImGui_ImplWin32_Shutdown( );
     ImGui::DestroyContext( );
 
-    apollo::directx::cleanup_device( );
+    directx::cleanup_device( );
     ::DestroyWindow( hwnd );
     ::UnregisterClassW( wc.lpszClassName, wc.hInstance );
 }
 
-void apollo::reload( ) { }
-
-void apollo::exit( ) { }
-
-void apollo::app_load_printer_details( ) { }
-
 bool apollo::directx::create_device( HWND hwnd ) {
-	if ( ( p_d3d = Direct3DCreate9( D3D_SDK_VERSION ) ) == nullptr )
-		return false;
+    DXGI_SWAP_CHAIN_DESC sd;
+    ZeroMemory( &sd, sizeof( sd ) );
+    sd.BufferCount = 2;
+    sd.BufferDesc.Width = 0;
+    sd.BufferDesc.Height = 0;
+    sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    sd.BufferDesc.RefreshRate.Numerator = 60;
+    sd.BufferDesc.RefreshRate.Denominator = 1;
+    sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+    sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    sd.OutputWindow = hwnd;
+    sd.SampleDesc.Count = 1;
+    sd.SampleDesc.Quality = 0;
+    sd.Windowed = TRUE;
+    sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 
-    // Create the D3DDevice
-    ZeroMemory( &d3dpp, sizeof( d3dpp ) );
-    d3dpp.Windowed = TRUE;
-    d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
-    d3dpp.BackBufferFormat = D3DFMT_UNKNOWN; 
-    d3dpp.EnableAutoDepthStencil = TRUE;
-    d3dpp.AutoDepthStencilFormat = D3DFMT_D16;
-    d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_ONE;
-    if ( p_d3d->CreateDevice( D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hwnd, D3DCREATE_HARDWARE_VERTEXPROCESSING, &d3dpp, &d3d_device ) < 0 )
+    UINT create_device_flags = 0;
+    D3D_FEATURE_LEVEL feature_level;
+    const D3D_FEATURE_LEVEL feature_level_array[ 2 ] = { D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_0, };
+    HRESULT hr = D3D11CreateDeviceAndSwapChain( nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, create_device_flags, feature_level_array, 2, D3D11_SDK_VERSION, &sd, &swap_chain, &d3d_device, &feature_level, &d3d_device_ctx );
+    if ( hr == DXGI_ERROR_UNSUPPORTED )
+        hr = D3D11CreateDeviceAndSwapChain( nullptr, D3D_DRIVER_TYPE_WARP, nullptr, create_device_flags, feature_level_array, 2, D3D11_SDK_VERSION, &sd, &swap_chain, &d3d_device, &feature_level, &d3d_device_ctx );
+    if ( hr != S_OK )
         return false;
 
+    create_render_target( );
     return true;
 }
 
 void apollo::directx::cleanup_device( ) {
+    cleanup_render_target( );
+
+    if ( swap_chain ) { swap_chain->Release( ); swap_chain = nullptr; }
+    if ( d3d_device_ctx ) { d3d_device_ctx->Release( ); d3d_device_ctx = nullptr; }
     if ( d3d_device ) { d3d_device->Release( ); d3d_device = nullptr; }
-    if ( p_d3d ) { p_d3d->Release( ); p_d3d = nullptr; }
 }
 
-void apollo::directx::reset_device( ) { 
-    ImGui_ImplDX9_InvalidateDeviceObjects( );
-    auto hr = d3d_device->Reset( &d3dpp );
-    if ( hr == D3DERR_INVALIDCALL )
-        IM_ASSERT( 0 );
-
-    ImGui_ImplDX9_CreateDeviceObjects( );
+void apollo::directx::create_render_target( ) { 
+    ID3D11Texture2D* back_buffer;
+    swap_chain->GetBuffer( 0, IID_PPV_ARGS( &back_buffer ) );
+    d3d_device->CreateRenderTargetView( back_buffer, nullptr, &render_target_view );
+    back_buffer->Release( );
 }
+
+void apollo::directx::cleanup_render_target( ) { 
+    if ( render_target_view ) { render_target_view->Release( ); render_target_view = nullptr; }
+}
+
 
 LRESULT WINAPI wnd_proc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam ) {
     if ( ImGui_ImplWin32_WndProcHandler( hWnd, msg, wParam, lParam ) )

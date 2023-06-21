@@ -37,8 +37,11 @@
 *.vcxproj.user
 *.sln
 
+# ImGui config
+imgui.ini
+
 # Folders
 x64
 build
 .vs
-imgui.ini
+intermediates
