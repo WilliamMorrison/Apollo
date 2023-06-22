@@ -21,12 +21,12 @@ std::string printer::get_printer_info( uint32_t info_type ) {
 		}
 		case printer_info::STATE_MESSAGE:
 		{
-			response = send_async_request.get( )[ "result" ][ "state_message" ].dump( );
+			response = send_async_request.get( )[ "result" ][ "state_message" ].get<std::string>( );
 			break;
 		}
 		case printer_info::HOSTNAME:
 		{
-			response = send_async_request.get( )[ "result" ][ "state_message" ].dump( );
+			response = send_async_request.get( )[ "result" ][ "hostname" ].get<std::string>( );
 			break;
 		}
 		case printer_info::SOFTWARE_VERSION:
