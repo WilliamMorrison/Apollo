@@ -21,7 +21,6 @@ namespace apollo {
 		void cleanup_device();
 		void create_render_target( );
 		void cleanup_render_target( );
-		void reset_device();
 	}
 
 	void launch();
