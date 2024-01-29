@@ -7,8 +7,6 @@
 
 int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow )
 {
-	//std::thread web_thread( network::test );
 	std::thread main_thread( apollo::launch );
-	//web_thread.join( ); 
 	main_thread.join( );
 }
